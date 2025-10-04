@@ -1,2 +1,2 @@
 # Install the package
--e .
+-e .[dev]
