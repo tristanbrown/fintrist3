@@ -22,7 +22,10 @@ def market_open(now=None):
     nyse = mcal.get_calendar('NYSE')
     if now is None:
         now = arrow.now('America/New_York')
-    schedule = nyse.schedule(start_date=now.shift(days=-7).datetime, end_date=now.datetime)
+    schedule = nyse.schedule(
+        start_date=now.shift(days=-7).datetime,
+        end_date=now.shift(days=7).datetime
+    )
     return nyse.open_at_time(schedule, now.datetime)  # Market currently open
 
 def latest_market_day(now=None):
