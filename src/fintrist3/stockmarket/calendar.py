@@ -3,7 +3,7 @@ import pandas as pd
 import arrow
 import pandas_market_calendars as mcal
 
-from fintrist2 import Config
+from fintrist3.settings import Config
 
 def market_schedule(start, end, tz=None):
     if tz is None:

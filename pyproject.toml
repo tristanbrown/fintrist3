@@ -13,6 +13,9 @@ authors = [
 dependencies = [
     "python-dotenv>=1.0.0",
     "pandas>=2.0.0",
+    "pandas-datareader>=0.10.0",
+    "pandas-market-calendars>=4.4.0",
+    "arrow>=1.2.0",
 ]
 dynamic = ["version"]
 

@@ -1,59 +1,29 @@
 """Stock market prices."""
-import time
 import pandas as pd
 import pandas_datareader as pdr
 
 from pandas_datareader.tiingo import TiingoIEXHistoricalReader
-from alpaca_management.connect import trade_api
-from fintrist2 import Config
-from fintrist2.db.models import StockData
+from fintrist3.settings import Config
 from . import calendar
 
-class Stock():
-    """Pulls stock price data and caches it in MongoDB.
+class Stock:
+    """Pull stock price data and return it without persistence.
 
-    freq: daily, or Xmin, or Yhour
+    freq: "daily", or intraday resolutions like "5min", "1hour".
     """
-    
-    def __init__(self, symbol, freq='daily', clearcache=False):
+
+    def __init__(self, symbol, freq="daily"):
         self.symbol = symbol
         self.freq = freq
-        self.study = self.get_study()
-        self.data = self.get_data(clearcache)
 
     def __repr__(self):
         return f"Stock: {self.symbol}, {self.freq}"
 
-    def get_study(self):
-        """"""
-        study = StockData(name=f"{self.symbol}_{self.freq}")
-        return study.db_obj
-
-    @property
-    def valid(self):
-        """Check if the Study data is still valid."""
-        # Check the age of the data
-        if not self.study.timestamp:
-            current = False
+    def get_data(self):
+        if self.freq == "daily":
+            return self.pull_daily()
         else:
-            current = calendar.market_current(self.study.timestamp)
-        return current
-
-    def get_data(self, clearcache):
-        if self.freq == 'daily':
-            pull_method = self.pull_daily
-            kwargs = {}
-        else:
-            pull_method = self.pull_intraday
-            kwargs = {'freq': self.freq}
-
-        if clearcache or not self.valid:
-            start = time.time()
-            self.study.data = pull_method(**kwargs)
-            self.study.save()
-            timelength = time.time() - start
-            print(f"Queried data in {timelength:.1f} sec")
-        return self.study.data
+            return self.pull_intraday(freq=self.freq)
 
     def pull_daily(self, source=None, mock=None):
         """Get a stock quote history.
@@ -104,6 +74,7 @@ class Stock():
         if mock is not None:
             dfs = mock
         elif source == 'Alpaca':
+            from alpaca_management.connect import trade_api  # type: ignore
             data = trade_api.get_barset(
                 self.symbol, timeframe='minute', start=open_time, end=close_time, limit=1000)
             missing = [symbol for symbol, records in data.items() if not records]
