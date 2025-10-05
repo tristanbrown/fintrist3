@@ -2,9 +2,9 @@
 import pandas as pd
 import pandas_datareader as pdr
 
-from pandas_datareader.tiingo import TiingoIEXHistoricalReader
 from fintrist3.settings import Config
 from . import calendar
+from .tiingo import TiingoIEXPriceVolume, get_data_tiingo
 
 class Stock:
     """Pull stock price data and return it without persistence.
@@ -41,7 +41,7 @@ class Stock:
             data = pdr.get_data_alphavantage(self.symbol, api_key=Config.APIKEY_AV, start='1900')
             data.index = pd.to_datetime(data.index)
         elif source == 'Tiingo':
-            data = pdr.get_data_tiingo(self.symbol, api_key=Config.APIKEY_TIINGO, start='1900')
+            data = get_data_tiingo(self.symbol, api_key=Config.APIKEY_TIINGO, start='1900')
 
             # Multiple stock symbols are possible
             data = data.reset_index().set_index('date')
@@ -89,20 +89,6 @@ class Stock:
             dfs = dfs.loc[self.symbol]
 
         return dfs
-
-class TiingoIEXPriceVolume(TiingoIEXHistoricalReader):
-    """Adds volume to the Tiingo/IEX intraday pricing data."""
-
-    @property
-    def params(self):
-        """Parameters to use in API calls"""
-        return {
-            "startDate": self.start.strftime("%Y-%m-%d"),
-            "endDate": self.end.strftime("%Y-%m-%d"),
-            "resampleFreq": self.freq,
-            "format": "json",
-            "columns": "open,high,low,close,volume",
-        }
 
 def format_stockrecords(records, tz):
     """Reformat stock tick records as a dataframe."""

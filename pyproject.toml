@@ -16,6 +16,7 @@ dependencies = [
     "pandas-datareader>=0.10.0",
     "pandas-market-calendars>=4.4.0",
     "arrow>=1.2.0",
+    "requests>=2.31.0",
 ]
 dynamic = ["version"]
 
