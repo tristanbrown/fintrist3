@@ -1,9 +1,8 @@
 """Stock market prices."""
 import pandas as pd
-import pandas_datareader as pdr
 
-from pandas_datareader.tiingo import TiingoIEXHistoricalReader
 from fintrist3.settings import Config
+from fintrist3.datareaders.tiingo import TiingoDataReader
 from . import calendar
 
 class Stock:
@@ -38,19 +37,13 @@ class Stock:
         elif not source:
             source = 'Tiingo'
         if source == 'AV':
+            # Lazy import to avoid hard dependency if AV is not used
+            import pandas_datareader as pdr  # type: ignore
             data = pdr.get_data_alphavantage(self.symbol, api_key=Config.APIKEY_AV, start='1900')
             data.index = pd.to_datetime(data.index)
         elif source == 'Tiingo':
-            data = pdr.get_data_tiingo(self.symbol, api_key=Config.APIKEY_TIINGO, start='1900')
-
-            # Multiple stock symbols are possible
-            data = data.reset_index().set_index('date')
-            data.index = data.index.date
-            data.index.name = 'date'
-            data = data.set_index('symbol', append=True)
-            data = data.reorder_levels(['symbol', 'date'])
-            if isinstance(self.symbol, str):  ## Single symbol only
-                data = data.droplevel('symbol')
+            reader = TiingoDataReader(api_key=Config.APIKEY_TIINGO)
+            data = reader.daily(self.symbol, start='1900-01-01')
         elif source == 'mock':
             data = mock
 
@@ -82,27 +75,15 @@ class Stock:
                 raise ValueError(f"No intraday data found for symbol(s) {', '.join(missing)}.")
             dfs = {symbol: format_stockrecords(records, tz) for symbol, records in data.items()}
         else:
-            tiingo = TiingoIEXPriceVolume(self.symbol, api_key=Config.APIKEY_TIINGO, end=day, freq=freq)
-            dfs = tiingo.read()
+            reader = TiingoDataReader(api_key=Config.APIKEY_TIINGO)
+            dfs = reader.intraday(self.symbol, day=day, freq=freq)
 
-        if isinstance(self.symbol, str):
+        # For backward compatibility: if result is a MultiIndex [symbol, ts],
+        # select the single symbol when a string was provided.
+        if isinstance(self.symbol, str) and isinstance(dfs.index, pd.MultiIndex):
             dfs = dfs.loc[self.symbol]
 
         return dfs
-
-class TiingoIEXPriceVolume(TiingoIEXHistoricalReader):
-    """Adds volume to the Tiingo/IEX intraday pricing data."""
-
-    @property
-    def params(self):
-        """Parameters to use in API calls"""
-        return {
-            "startDate": self.start.strftime("%Y-%m-%d"),
-            "endDate": self.end.strftime("%Y-%m-%d"),
-            "resampleFreq": self.freq,
-            "format": "json",
-            "columns": "open,high,low,close,volume",
-        }
 
 def format_stockrecords(records, tz):
     """Reformat stock tick records as a dataframe."""
