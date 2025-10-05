@@ -1,10 +1,9 @@
 """Stock market prices."""
 import pandas as pd
-import pandas_datareader as pdr
 
-from pandas_datareader.tiingo import TiingoIEXHistoricalReader
 from fintrist3.settings import Config
 from . import calendar
+from .tiingo import TiingoDailyReader, TiingoIEXHistoricalReader
 
 class Stock:
     """Pull stock price data and return it without persistence.
@@ -41,16 +40,17 @@ class Stock:
             data = pdr.get_data_alphavantage(self.symbol, api_key=Config.APIKEY_AV, start='1900')
             data.index = pd.to_datetime(data.index)
         elif source == 'Tiingo':
-            data = pdr.get_data_tiingo(self.symbol, api_key=Config.APIKEY_TIINGO, start='1900')
+            reader = TiingoDailyReader(
+                self.symbol,
+                api_key=Config.APIKEY_TIINGO,
+                start='1900-01-01',
+            )
+            data = reader.read()
 
-            # Multiple stock symbols are possible
-            data = data.reset_index().set_index('date')
-            data.index = data.index.date
-            data.index.name = 'date'
-            data = data.set_index('symbol', append=True)
-            data = data.reorder_levels(['symbol', 'date'])
-            if isinstance(self.symbol, str):  ## Single symbol only
-                data = data.droplevel('symbol')
+            if isinstance(self.symbol, str):
+                data.index = pd.Index(data.index, name='date')
+            else:
+                data.index = data.index.set_names(['symbol', 'date'])
         elif source == 'mock':
             data = mock
 
