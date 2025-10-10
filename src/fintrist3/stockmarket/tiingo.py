@@ -31,6 +31,7 @@ class _BaseTiingoReader:
     """Shared functionality for Tiingo readers used in tests."""
 
     endpoint_template: str
+    batch_endpoint: str | None = None
 
     def __init__(
         self,
@@ -93,8 +94,15 @@ class _BaseTiingoReader:
     # Request building
     def _build_call(self, symbol: str) -> _Call:
         url = self.endpoint_template.format(ticker=symbol)
-        params = self.params
+        params = dict(self.params)
         return _Call(url, params)
+
+    def _build_batch_call(self, symbols: Sequence[str]) -> _Call:
+        if not self.batch_endpoint:
+            raise NotImplementedError("Batch endpoint not configured for Tiingo reader")
+        params = dict(self.params)
+        params["tickers"] = ",".join(symbols)
+        return _Call(self.batch_endpoint, params)
 
     @property
     def params(self) -> dict[str, str]:  # pragma: no cover - overridden in subclasses
@@ -107,15 +115,19 @@ class _BaseTiingoReader:
     # ------------------------------------------------------------------
     # Public API
     def read(self) -> pd.DataFrame:
-        frames = []
-        for symbol in self.symbols:
+        if len(self.symbols) == 1:
+            symbol = self.symbols[0]
             payload = self._request_symbol(symbol)
-            frames.append(self._format_payload(symbol, payload))
+            frames = {symbol: self._format_payload(symbol, payload)}
+        else:
+            payload = self._request_batch(self.symbols)
+            frames = self._format_batch_payload(payload)
 
         if not frames:
             return pd.DataFrame()
 
-        result = pd.concat(frames, keys=[sym for sym in self.symbols], names=["symbol"])
+        ordered_frames = [frames.get(sym, self._format_payload(sym, [])) for sym in self.symbols]
+        result = pd.concat(ordered_frames, keys=[sym for sym in self.symbols], names=["symbol"])
         result.index.set_names(["symbol", "date"], inplace=True)
         return result.sort_index()
 
@@ -123,6 +135,19 @@ class _BaseTiingoReader:
     # HTTP helpers
     def _request_symbol(self, symbol: str) -> list[dict[str, object]]:
         call = self._build_call(symbol)
+        payload = self._issue_request(call, f"'{symbol}'")
+        if not isinstance(payload, list):
+            raise TiingoRequestError("Tiingo response did not contain price records")
+        return payload
+
+    def _request_batch(self, symbols: Sequence[str]) -> list[dict[str, object]]:
+        call = self._build_batch_call(symbols)
+        payload = self._issue_request(call, f"symbols {', '.join(symbols)}")
+        if not isinstance(payload, list):
+            raise TiingoRequestError("Tiingo batch response did not contain price records")
+        return payload
+
+    def _issue_request(self, call: _Call, context: str) -> object:
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Token {self.api_key}",
@@ -135,14 +160,12 @@ class _BaseTiingoReader:
         )
         if response.status_code >= 400:
             raise TiingoRequestError(
-                f"Tiingo request for '{symbol}' failed with {response.status_code}: {response.text}"
+                f"Tiingo request for {context} failed with {response.status_code}: {response.text}"
             )
         try:
             payload = response.json()
         except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
             raise TiingoRequestError("Tiingo response was not valid JSON") from exc
-        if not isinstance(payload, list):
-            raise TiingoRequestError("Tiingo response did not contain price records")
         return payload
 
     # ------------------------------------------------------------------
@@ -158,17 +181,45 @@ class _BaseTiingoReader:
         frame.index.name = "date"
         return frame
 
+    def _format_batch_payload(
+        self, payload: Iterable[dict[str, object]]
+    ) -> dict[str, pd.DataFrame]:
+        frames: dict[str, pd.DataFrame] = {}
+        grouped: dict[str, list[dict[str, object]]] = {}
+
+        for entry in payload:
+            if not isinstance(entry, dict) or "ticker" not in entry:
+                raise TiingoRequestError("Tiingo batch response missing 'ticker' field")
+
+            ticker = str(entry["ticker"])
+            price_data = entry.get("priceData")
+            if price_data is not None:
+                if not isinstance(price_data, list):
+                    raise TiingoRequestError("Tiingo batch response contained invalid priceData")
+                frames[ticker] = self._format_payload(ticker, price_data)
+                continue
+
+            record = {k: v for k, v in entry.items() if k != "ticker"}
+            grouped.setdefault(ticker, []).append(record)
+
+        for ticker, records in grouped.items():
+            frames[ticker] = self._format_payload(ticker, records)
+
+        return frames
+
 
 class TiingoDailyReader(_BaseTiingoReader):
     """Retrieve historical daily pricing data from Tiingo."""
 
     endpoint_template = "https://api.tiingo.com/tiingo/daily/{ticker}/prices"
+    batch_endpoint = "https://api.tiingo.com/tiingo/daily/prices"
 
 
 class TiingoIEXHistoricalReader(_BaseTiingoReader):
     """Retrieve intraday pricing data from Tiingo's IEX endpoint."""
 
     endpoint_template = "https://api.tiingo.com/iex/{ticker}/prices"
+    batch_endpoint = "https://api.tiingo.com/iex/prices"
 
     def _default_freq(self) -> str | None:
         return "5min"
