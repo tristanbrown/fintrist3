@@ -31,6 +31,7 @@ class _BaseTiingoReader:
     """Shared functionality for Tiingo readers used in tests."""
 
     endpoint_template: str
+    batch_endpoint: str | None = None
 
     def __init__(
         self,
@@ -108,9 +109,15 @@ class _BaseTiingoReader:
     # Public API
     def read(self) -> pd.DataFrame:
         frames = []
-        for symbol in self.symbols:
+
+        if len(self.symbols) == 1 or self.batch_endpoint is None:
+            symbol = self.symbols[0]
             payload = self._request_symbol(symbol)
             frames.append(self._format_payload(symbol, payload))
+        else:
+            payloads = self._request_batch(self.symbols)
+            for symbol in self.symbols:
+                frames.append(self._format_payload(symbol, payloads.get(symbol, [])))
 
         if not frames:
             return pd.DataFrame()
@@ -145,6 +152,64 @@ class _BaseTiingoReader:
             raise TiingoRequestError("Tiingo response did not contain price records")
         return payload
 
+    def _request_batch(self, symbols: Sequence[str]) -> dict[str, list[dict[str, object]]]:
+        if not self.batch_endpoint:
+            raise TiingoRequestError("Batch endpoint is not configured for this reader")
+
+        call = self._build_batch_call(symbols)
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Token {self.api_key}",
+        }
+        response = self.session.get(
+            call.url,
+            params=call.params,
+            headers=headers,
+            timeout=self.timeout,
+        )
+        if response.status_code >= 400:
+            joined = ",".join(symbols)
+            raise TiingoRequestError(
+                f"Tiingo batch request for '{joined}' failed with {response.status_code}: {response.text}"
+            )
+        try:
+            payload = response.json()
+        except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
+            raise TiingoRequestError("Tiingo response was not valid JSON") from exc
+        if not isinstance(payload, list):
+            raise TiingoRequestError("Tiingo batch response did not contain price records")
+
+        batches: dict[str, list[dict[str, object]]] = {}
+        for entry in payload:
+            if not isinstance(entry, dict):
+                raise TiingoRequestError("Tiingo batch response contained malformed data")
+            ticker = entry.get("ticker")
+            if not isinstance(ticker, str):
+                raise TiingoRequestError("Tiingo batch response missing 'ticker' field")
+            records: list[dict[str, object]] | None
+            candidate = entry.get("priceData")
+            if isinstance(candidate, list):
+                records = candidate
+            else:
+                candidate = entry.get("data")
+                if isinstance(candidate, list):
+                    records = candidate
+                else:
+                    raise TiingoRequestError(
+                        "Tiingo batch response missing 'priceData' for ticker '{ticker}'".format(
+                            ticker=ticker
+                        )
+                    )
+            batches[ticker] = records
+        return batches
+
+    def _build_batch_call(self, symbols: Sequence[str]) -> _Call:
+        if not self.batch_endpoint:
+            raise TiingoRequestError("Batch endpoint is not configured for this reader")
+        params = dict(self.params)
+        params["tickers"] = ",".join(symbols)
+        return _Call(self.batch_endpoint, params)
+
     # ------------------------------------------------------------------
     # Data parsing
     def _format_payload(self, symbol: str, payload: Iterable[dict[str, object]]) -> pd.DataFrame:
@@ -163,12 +228,14 @@ class TiingoDailyReader(_BaseTiingoReader):
     """Retrieve historical daily pricing data from Tiingo."""
 
     endpoint_template = "https://api.tiingo.com/tiingo/daily/{ticker}/prices"
+    batch_endpoint = "https://api.tiingo.com/tiingo/daily/prices"
 
 
 class TiingoIEXHistoricalReader(_BaseTiingoReader):
     """Retrieve intraday pricing data from Tiingo's IEX endpoint."""
 
     endpoint_template = "https://api.tiingo.com/iex/{ticker}/prices"
+    batch_endpoint = "https://api.tiingo.com/iex/prices"
 
     def _default_freq(self) -> str | None:
         return "5min"
