@@ -143,7 +143,7 @@ class _BaseTiingoReader:
 
     # ------------------------------------------------------------------
     # HTTP helpers
-    def _perform_request(self, call: _Call, symbol: str | None = None) -> object:
+    def _perform_request(self, call: _Call, symbol: str | None = None) -> list[dict[str, object]]:
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Token {self.api_key}",
@@ -163,20 +163,18 @@ class _BaseTiingoReader:
             payload = response.json()
         except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
             raise TiingoRequestError("Tiingo response was not valid JSON") from exc
+        if not isinstance(payload, list):
+            raise TiingoRequestError("Tiingo response did not contain price records")
         return payload
 
     def _request_symbol(self, symbol: str) -> list[dict[str, object]]:
         call = self._build_call(symbol)
         payload = self._perform_request(call, symbol)
-        if not isinstance(payload, list):
-            raise TiingoRequestError("Tiingo response did not contain price records")
         return payload
 
     def _request_batch(self, symbols: Sequence[str]) -> Mapping[str, list[dict[str, object]]]:
         call = self._build_batch_call(symbols)
         payload = self._perform_request(call)
-        if not isinstance(payload, list):
-            raise TiingoRequestError("Tiingo batch response did not contain price records")
         grouped: dict[str, list[dict[str, object]]] = {}
         for entry in payload:
             if not isinstance(entry, dict):
