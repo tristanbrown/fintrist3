@@ -8,7 +8,7 @@ import pandas as pd
 from fintrist3.settings import Config
 
 from . import calendar
-from .tiingo import TiingoDailyReader, TiingoIEXHistoricalReader
+from ..datareaders.tiingo import TiingoDailyReader, TiingoIEXHistoricalReader
 
 
 class Stock:
