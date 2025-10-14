@@ -50,21 +50,13 @@ def _payload(date: str, **fields: float) -> dict[str, Any]:
 def test_get_data_tiingo_returns_multiindex_dataframe() -> None:
     session = _FakeSession(
         [
-            {
-                "json": [
-                    {
-                        "ticker": "AAPL",
-                        "priceData": [
-                            _payload("2020-01-01", close=1.0),
-                            _payload("2020-01-02", close=2.0),
-                        ],
-                    },
-                    {
-                        "ticker": "MSFT",
-                        "priceData": [_payload("2020-01-01", close=5.0)],
-                    },
-                ]
-            }
+            [
+                _payload("2020-01-01", close=1.0),
+                _payload("2020-01-02", close=2.0),
+            ],
+            [
+                _payload("2020-01-01", close=5.0),
+            ],
         ]
     )
     df = get_data_tiingo(["AAPL", "MSFT"], api_key="token", start="2020-01-01", end="2020-01-05", session=session)
@@ -73,12 +65,17 @@ def test_get_data_tiingo_returns_multiindex_dataframe() -> None:
     assert df.loc[("AAPL", pd.Timestamp("2020-01-02")), "close"] == 2.0
     assert df.loc[("MSFT", pd.Timestamp("2020-01-01")), "close"] == 5.0
 
-    assert len(session.calls) == 1
+    assert len(session.calls) == 2
     first_call = session.calls[0]
-    assert first_call["url"].endswith("tiingo/daily/prices")
+    second_call = session.calls[1]
+
+    assert first_call["url"].endswith("tiingo/daily/AAPL/prices")
     assert first_call["params"]["startDate"] == "2020-01-01"
-    assert first_call["params"]["tickers"] == "AAPL,MSFT"
     assert first_call["headers"]["Authorization"] == "Token token"
+    assert "tickers" not in first_call["params"]
+
+    assert second_call["url"].endswith("tiingo/daily/MSFT/prices")
+    assert second_call["params"]["startDate"] == "2020-01-01"
 
 
 def test_get_data_tiingo_raises_on_http_error() -> None:

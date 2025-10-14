@@ -104,6 +104,12 @@ class _BaseTiingoReader:
         params["tickers"] = ",".join(symbols)
         return _Call(self.batch_endpoint, params)
 
+    def _should_use_batch(self) -> bool:
+        if not self.batch_endpoint:
+            return False
+        params = self.params
+        return not {"startDate", "endDate"} & params.keys()
+
     @property
     def params(self) -> dict[str, str]:  # pragma: no cover - overridden in subclasses
         return {
@@ -115,19 +121,19 @@ class _BaseTiingoReader:
     # ------------------------------------------------------------------
     # Public API
     def read(self) -> pd.DataFrame:
-        if len(self.symbols) == 1:
-            symbol = self.symbols[0]
-            payload = self._request_symbol(symbol)
-            frames = [self._format_payload(symbol, payload)]
-        else:
+        frames = []
+        if len(self.symbols) > 1 and self._should_use_batch():
             payloads = self._request_batch(self.symbols)
-            frames = []
             for symbol in self.symbols:
                 if symbol not in payloads:
                     raise TiingoRequestError(
                         f"Tiingo batch response missing data for symbol '{symbol}'"
                     )
                 frames.append(self._format_payload(symbol, payloads[symbol]))
+        else:
+            for symbol in self.symbols:
+                payload = self._request_symbol(symbol)
+                frames.append(self._format_payload(symbol, payload))
 
         if not frames:
             return pd.DataFrame()
