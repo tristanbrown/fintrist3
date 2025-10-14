@@ -185,11 +185,12 @@ class _BaseTiingoReader:
             if not isinstance(ticker, str):
                 raise TiingoRequestError("Tiingo batch response missing ticker identifier")
             price_data = entry.get("priceData") or entry.get("data") or entry.get("prices")
-            if price_data is None and {"date"}.issubset(entry.keys()):
-                price_data = [entry]
             if price_data is None:
-                price_data = []
-            if not isinstance(price_data, list):
+                if "date" in entry:
+                    price_data = [entry]
+                else:
+                    price_data = []
+            elif not isinstance(price_data, list):
                 raise TiingoRequestError("Tiingo batch response price data was not a list")
             grouped[ticker] = price_data
         return grouped
