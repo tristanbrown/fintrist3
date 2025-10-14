@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import Iterable, List, Mapping, Sequence
+from typing import Iterable, List, Mapping, Sequence, cast
 
 import pandas as pd
 import requests
@@ -98,14 +98,13 @@ class _BaseTiingoReader:
         return _Call(url, params)
 
     def _build_batch_call(self, symbols: Sequence[str]) -> _Call:
-        if not self.batch_endpoint:
-            raise TiingoRequestError("Batch requests are not supported for this endpoint")
         params = dict(self.params)
         params["tickers"] = ",".join(symbols)
-        return _Call(self.batch_endpoint, params)
+        endpoint = cast(str, self.batch_endpoint)
+        return _Call(endpoint, params)
 
     def _should_use_batch(self) -> bool:
-        if not self.batch_endpoint:
+        if (len(self.symbols) <= 1) or (not self.batch_endpoint):
             return False
         params = self.params
         return not {"startDate", "endDate"} & params.keys()
@@ -122,7 +121,7 @@ class _BaseTiingoReader:
     # Public API
     def read(self) -> pd.DataFrame:
         frames = []
-        if len(self.symbols) > 1 and self._should_use_batch():
+        if self._should_use_batch():
             payloads = self._request_batch(self.symbols)
             for symbol in self.symbols:
                 if symbol not in payloads:
@@ -230,4 +229,3 @@ class TiingoIEXHistoricalReader(_BaseTiingoReader):
         params = super().params
         params["resampleFreq"] = self.freq
         return params
-
