@@ -14,13 +14,6 @@ class TiingoRequestError(RuntimeError):
     """Raised when Tiingo returns an error response."""
 
 
-def get_data_tiingo(*args, **kwargs) -> pd.DataFrame:
-    """Return historical daily data for the provided symbols."""
-
-    reader = TiingoDailyReader(*args, **kwargs)
-    return reader.read()
-
-
 @dataclass(frozen=True)
 class _Call:
     url: str
