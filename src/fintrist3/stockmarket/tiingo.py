@@ -227,4 +227,5 @@ class TiingoIEXHistoricalReader(_BaseTiingoReader):
     def params(self) -> dict[str, str]:  # type: ignore[override]
         params = super().params
         params["resampleFreq"] = self.freq
+        params["columns"] = "open,high,low,close,volume"
         return params
