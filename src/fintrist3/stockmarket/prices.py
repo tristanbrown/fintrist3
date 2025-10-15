@@ -26,10 +26,10 @@ class Stock:
 
     def get_data(self) -> pd.DataFrame:
         if self.freq == "daily":
-            return self.pull_daily()
-        return self.pull_intraday(freq=self.freq)
+            return self.daily()
+        return self.intraday(freq=self.freq)
 
-    def pull_daily(self, source: str | None = None, mock: pd.DataFrame | None = None) -> pd.DataFrame:
+    def daily(self, source: str | None = None, mock: pd.DataFrame | None = None) -> pd.DataFrame:
         """Get a stock quote history."""
 
         if mock is not None:
@@ -59,7 +59,7 @@ class Stock:
 
         return data
 
-    def pull_intraday(
+    def intraday(
         self,
         day: pd.Timestamp | None = None,
         freq: str = "5min",

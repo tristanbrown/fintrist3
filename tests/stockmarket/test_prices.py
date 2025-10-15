@@ -11,7 +11,7 @@ from fintrist3.stockmarket import calendar
 from fintrist3.stockmarket.prices import Stock
 
 
-def test_stock_pull_daily_uses_tiingo_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_stock_daily_uses_tiingo_reader(monkeypatch: pytest.MonkeyPatch) -> None:
     multi_index = pd.MultiIndex.from_product(
         [["AAPL", "MSFT"], pd.to_datetime(["2020-01-01"])],
         names=["symbol", "date"],
@@ -40,7 +40,7 @@ def test_stock_pull_daily_uses_tiingo_reader(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr("fintrist3.stockmarket.prices.TiingoDailyReader", DummyReader)
 
     stock = Stock(["AAPL", "MSFT"])
-    result = stock.pull_daily()
+    result = stock.daily()
 
     pd.testing.assert_frame_equal(result, dummy_df)
     assert calls == [
@@ -54,16 +54,16 @@ def test_stock_pull_daily_uses_tiingo_reader(monkeypatch: pytest.MonkeyPatch) ->
     ]
 
 
-def test_stock_get_data_delegates_to_pull_daily(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_stock_get_data_delegates_to_daily(monkeypatch: pytest.MonkeyPatch) -> None:
     dummy_df = pd.DataFrame({"close": [3.0]}, index=pd.to_datetime(["2020-01-03"]))
     captured: dict[str, Any] = {}
 
-    def fake_pull_daily(self: Stock, *args: Any, **kwargs: Any) -> pd.DataFrame:
+    def fake_daily(self: Stock, *args: Any, **kwargs: Any) -> pd.DataFrame:
         captured["args"] = args
         captured["kwargs"] = kwargs
         return dummy_df
 
-    monkeypatch.setattr(Stock, "pull_daily", fake_pull_daily)
+    monkeypatch.setattr(Stock, "daily", fake_daily)
 
     stock = Stock("AAPL")
     result = stock.get_data()
@@ -72,7 +72,7 @@ def test_stock_get_data_delegates_to_pull_daily(monkeypatch: pytest.MonkeyPatch)
     assert captured == {"args": (), "kwargs": {}}
 
 
-def test_stock_pull_intraday_uses_batch_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_stock_intraday_uses_batch_reader(monkeypatch: pytest.MonkeyPatch) -> None:
     dummy_index = pd.MultiIndex.from_tuples(
         [
             ("AAPL", pd.Timestamp("2020-01-01T14:30:00Z")),
@@ -107,7 +107,7 @@ def test_stock_pull_intraday_uses_batch_reader(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr("fintrist3.stockmarket.prices.TiingoIEXHistoricalReader", DummyReader)
 
     stock = Stock(["AAPL", "MSFT"], freq="15min")
-    result = stock.pull_intraday(day=pd.Timestamp("2020-01-02"), freq="15min")
+    result = stock.intraday(day=pd.Timestamp("2020-01-02"), freq="15min")
 
     assert result.equals(dummy_df)
     assert calls == [
@@ -121,7 +121,7 @@ def test_stock_pull_intraday_uses_batch_reader(monkeypatch: pytest.MonkeyPatch) 
     ]
 
 
-def test_stock_pull_intraday_returns_single_symbol_frame(
+def test_stock_intraday_returns_single_symbol_frame(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     multi_index = pd.MultiIndex.from_tuples(
@@ -171,7 +171,7 @@ def test_stock_pull_intraday_returns_single_symbol_frame(
     monkeypatch.setattr("fintrist3.stockmarket.prices.TiingoIEXHistoricalReader", DummyReader)
 
     stock = Stock("AAPL")
-    result = stock.pull_intraday(day=pd.Timestamp("2020-01-02"), freq="5min")
+    result = stock.intraday(day=pd.Timestamp("2020-01-02"), freq="5min")
 
     expected = dummy_df.loc["AAPL"]
     pd.testing.assert_frame_equal(result, expected)
